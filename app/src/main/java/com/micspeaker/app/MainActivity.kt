@@ -59,7 +59,6 @@ class MainActivity : ComponentActivity() {
         am = getSystemService(AudioManager::class.java)
         am.registerAudioDeviceCallback(deviceWatcher, Handler(Looper.getMainLooper()))
         Engine.volume = volume
-        rescan()
         lifecycleScope.launch { update = Updater.check() }
 
         setContent {
@@ -99,7 +98,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Scan twice each time the app opens: once right away, once after devices
+        // that are still waking up (Bluetooth, USB) have had time to show up.
         rescan()
+        lifecycleScope.launch { delay(1500); rescan() }
         // Coming back from "allow installs" settings: continue the update.
         downloaded?.let { if (packageManager.canRequestPackageInstalls()) Updater.install(this, it) }
     }

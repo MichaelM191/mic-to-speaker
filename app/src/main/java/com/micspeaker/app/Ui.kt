@@ -151,26 +151,6 @@ fun MicScreen(
                     RouteNode("To", selOut, Modifier.weight(1f))
                 }
                 Meter(running, level)
-                // One-line port scan summary.
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    val bits = buildList {
-                        add("${inputs.count { it.usable }} mics")
-                        if (outputs.any { it.kind == Kind.BT && it.usable }) add("Bluetooth")
-                        if (outputs.any { it.kind == Kind.JACK }) add("Jack")
-                        if (outputs.any { it.kind == Kind.USB && it.usable }) add("USB")
-                        add("Speaker")
-                        val extra = outputs.count { it.group == "Also found" }
-                        if (extra > 0) add("+$extra")
-                    }
-                    Text("Found: " + bits.joinToString(" · "), color = Muted, fontSize = 12.5.sp, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    Text(
-                        if (scanning) "Scanning…" else "Scan",
-                        color = Accent, fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                        modifier = Modifier.clip(CircleShape).border(1.5.dp, Line, CircleShape)
-                            .clickable(enabled = !scanning) { onScan() }.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
             }
 
             // ---- Bottom: everything you touch, in thumb reach ----

@@ -90,6 +90,9 @@ object Devices {
         if (out.none { it.kind == Kind.BT }) {
             out += Choice("btin-pick", "Bluetooth mic", "Not connected · tap to pick a device", Kind.BT, c, pickBt = true)
         }
+        if (out.none { it.kind == Kind.USB }) {
+            out += Choice("usbin-none", "USB mic", "Plug a USB mic into the phone port", Kind.USB, c, enabled = false)
+        }
         return out.distinctBy { it.id }
     }
 

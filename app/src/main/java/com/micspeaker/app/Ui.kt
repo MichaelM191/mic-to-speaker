@@ -168,7 +168,7 @@ fun MicScreen(
                     }
                     Meter(running, level)
                     if (running) Text(
-                        delay?.let { "Echo canceller locked · speaker delay $it ms" } ?: if (echo) "Listening for echo…" else "Echo cut is off",
+                        delay?.let { "Smart echo locked on · speaker delay $it ms" } ?: if (echo) "Listening for echo…" else "Smart echo is off",
                         color = Muted, fontSize = 11.sp
                     )
                 }
@@ -178,7 +178,7 @@ fun MicScreen(
             Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 val feedbackRisk = Devices.isBuiltInMic(selIn) && selOut?.kind == Kind.SPEAKER && !echo
                 if (error != null) Notice(error!!)
-                else if (feedbackRisk) Notice("Phone mic into phone speaker can squeal. Turn on Echo cut or use headphones.")
+                else if (feedbackRisk) Notice("Phone mic into phone speaker can squeal. Turn on Smart echo or use headphones.")
 
                 Picker("Input", selIn, inputs, onPickIn, onSwitchBtIn)
                 Picker("Output", selOut, outputs, onPickOut, onSwitchBtOut)
@@ -188,7 +188,7 @@ fun MicScreen(
                 @Suppress("DEPRECATION")
                 LevelSlider("Volume", Icons.Filled.VolumeUp, volume, 0f..1.5f, onVolume)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Toggle("Echo cut", echo, Modifier.weight(1.2f), onEcho)
+                    Toggle("Smart echo", echo, Modifier.weight(1.2f), onEcho)
                     Toggle("Noise", noise, Modifier.weight(1f), onNoise)
                     Toggle("Boost", boost, Modifier.weight(1f), onBoost)
                     Toggle("EQ", eq.any { abs(it) > 0.05f }, Modifier.weight(0.8f)) { eqOpen = true }

@@ -76,6 +76,10 @@ class FeedbackCanceller(private val rate: Int) {
         return e
     }
 
+    /** Speaker sample from one echo-delay ago, lined up with the current mic sample (0 if not found yet). */
+    fun ref(): Float { val d = found; return if (d < 0) 0f else out[(n - d - pre) and mask] }
+    val locked: Boolean get() = found >= 0
+
     fun push(y: Float) {
         out[n and mask] = y
         n++

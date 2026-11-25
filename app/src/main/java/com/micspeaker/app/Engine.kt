@@ -141,6 +141,7 @@ object Engine {
             val eqf = Equalizer(rate)
             val fc = FeedbackCanceller(rate).also { canceller = it }
             val shift = FreqShift(rate)
+            val smart = SmartFocus(rate)
             val chunk = burst.coerceAtMost(minIn / 2)
             val buf = ShortArray(chunk)
             var shown = 0f
@@ -156,7 +157,7 @@ object Engine {
                     val s = buf[i] * inGain
                     val a = abs(s)
                     if (a > peak) peak = a
-                    var y = if (guardOn) guard.process(gate.process(fc.cancel(s))) else s
+                    var y = if (guardOn) guard.process(gate.process(fc.cancel(s).let { e -> smart.process(e, fc.ref(), fc.locked) })) else s
                     y = eqf.process(y) * outGain
                     if (guardOn) y = shift.process(y)
                     y = softLimit(y)

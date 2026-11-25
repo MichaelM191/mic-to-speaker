@@ -1,6 +1,13 @@
 package com.micspeaker.app
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -118,12 +125,14 @@ fun MicScreen(
     onSwitchBtIn: () -> Unit, onSwitchBtOut: () -> Unit, onScan: () -> Unit,
     onVolume: (Float) -> Unit, micGain: Float, onMicGain: (Float) -> Unit, onEcho: () -> Unit, onNoise: () -> Unit, onBoost: () -> Unit,
     onStartStop: () -> Unit, onUpdate: () -> Unit,
+    prompt: SwitchPrompt?, onAcceptPrompt: () -> Unit, onDismissPrompt: () -> Unit,
 ) {
     val running by Engine.running.collectAsState()
     val level by Engine.level.collectAsState()
     val error by Engine.error.collectAsState()
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Accent, background = Bg, surface = Surface2, onSurface = Fg)) {
+      Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().background(Bg).systemBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
@@ -177,6 +186,80 @@ fun MicScreen(
                     Toggle("Voice boost", boost, Modifier.weight(1f), onBoost)
                 }
                 BigButton(running, onStartStop)
+            }
+        }
+        SwitchPopup(prompt, onAcceptPrompt, onDismissPrompt)
+      }
+    }
+}
+
+/** A device that just connected, offered as the new input or output. */
+data class SwitchPrompt(val choice: Choice, val isInput: Boolean, val key: Long = System.nanoTime())
+
+private const val PROMPT_MS = 5000
+
+@Composable
+private fun SwitchPopup(prompt: SwitchPrompt?, onAccept: () -> Unit, onDismiss: () -> Unit) {
+    // Remember the last prompt so the popup can fade out with its text still showing.
+    var shown by remember { mutableStateOf<SwitchPrompt?>(null) }
+    if (prompt != null) shown = prompt
+
+    // Dim the whole screen behind the popup.
+    AnimatedVisibility(visible = prompt != null, enter = fadeIn(tween(250)), exit = fadeOut(tween(200))) {
+        Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() }
+        )
+    }
+    AnimatedVisibility(
+        visible = prompt != null,
+        enter = fadeIn(tween(250)) + slideInVertically(tween(300)) { it / 3 },
+        exit = fadeOut(tween(200)),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        val p = shown ?: return@AnimatedVisibility
+        // Countdown: a small white line that shrinks from right to left, then switches.
+        val left = remember(p.key) { Animatable(1f) }
+        LaunchedEffect(p.key) {
+            left.animateTo(0f, tween(PROMPT_MS, easing = LinearEasing))
+            onAccept()
+        }
+        Box(Modifier.fillMaxSize().systemBarsPadding().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
+            Column(
+                Modifier.fillMaxWidth().padding(bottom = 96.dp).clip(RoundedCornerShape(24.dp)).background(Surface2)
+                    .border(1.dp, Line, RoundedCornerShape(24.dp))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+            ) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(AccentSoft), contentAlignment = Alignment.Center) {
+                            Icon(iconFor(p.choice.kind), null, tint = Accent, modifier = Modifier.size(26.dp))
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(if (p.isInput) "New input found" else "New output found", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(p.choice.name, color = Fg, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(p.choice.sub, color = Muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    Text("Switch to it? It switches on its own when the line runs out.", color = Fg, fontSize = 14.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            Modifier.weight(1f).heightIn(min = 52.dp).clip(RoundedCornerShape(16.dp)).border(2.dp, Line, RoundedCornerShape(16.dp))
+                                .clickable { onDismiss() },
+                            contentAlignment = Alignment.Center
+                        ) { Text("Keep current", color = Fg, fontWeight = FontWeight.Bold) }
+                        Box(
+                            Modifier.weight(1f).heightIn(min = 52.dp).clip(RoundedCornerShape(16.dp)).background(Accent)
+                                .clickable { onAccept() },
+                            contentAlignment = Alignment.Center
+                        ) { Text("Switch", color = AccentFg, fontWeight = FontWeight.Bold) }
+                    }
+                }
+                // The timer line, anchored on the left so it shrinks toward the left.
+                Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp).padding(bottom = 10.dp)) {
+                    Box(Modifier.fillMaxWidth(left.value).height(2.dp).clip(CircleShape).background(Color.White))
+                }
             }
         }
     }

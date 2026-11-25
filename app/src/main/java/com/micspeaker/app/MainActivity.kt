@@ -44,6 +44,9 @@ class MainActivity : ComponentActivity() {
     // Set when the user went to pick a Bluetooth device; the next one that connects gets used.
     private var wantBtIn = false
     private var wantBtOut = false
+    // Devices seen on the last scan, so a newly connected one can be offered in a popup.
+    private var known: Set<String>? = null
+    private var prompt by mutableStateOf<SwitchPrompt?>(null)
 
     private val deviceWatcher = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) = rescan()
@@ -95,6 +98,9 @@ class MainActivity : ComponentActivity() {
                 onBoost = { boost = !boost; Engine.boost = boost },
                 onStartStop = { if (Engine.running.value) stopLoop() else tryStart() },
                 onUpdate = { runUpdate() },
+                prompt = prompt,
+                onAcceptPrompt = { acceptPrompt() },
+                onDismissPrompt = { prompt = null },
             )
         }
     }
@@ -131,7 +137,40 @@ class MainActivity : ComponentActivity() {
         Engine.input = newIn
         Engine.output = newOut
         if (changed) Engine.restartIfRunning(this)
+        offerNewDevice(i, o)
         lifecycleScope.launch { delay(700); scanning = false }
+    }
+
+    /** If a device just connected (not built into the phone), ask whether to switch to it. */
+    private fun offerNewDevice(i: List<Choice>, o: List<Choice>) {
+        val usable = (i + o).filter { it.usable }
+        val ids = usable.map { it.id }.toSet()
+        val before = known
+        known = ids
+        // A popup for a device that has gone away again is dropped.
+        prompt?.let { p -> if (p.choice.id !in ids) prompt = null }
+        if (before == null) return // first scan: nothing is "new" yet
+
+        val builtIn = setOf(Kind.SPEAKER, Kind.EARPIECE)
+        val newOut = o.filter { it.usable && it.id !in before && it.kind !in builtIn && it.id != selOut?.id }
+            .let { list -> list.firstOrNull { it.group == "Main" } ?: list.firstOrNull() }
+        val newIn = i.filter {
+            it.usable && it.id !in before && it.device != null &&
+                it.device.type != AudioDeviceInfo.TYPE_BUILTIN_MIC && it.id != selIn?.id
+        }.firstOrNull()
+
+        when {
+            newOut != null -> prompt = SwitchPrompt(newOut, isInput = false)
+            newIn != null -> prompt = SwitchPrompt(newIn, isInput = true)
+        }
+    }
+
+    private fun acceptPrompt() {
+        val p = prompt ?: return
+        prompt = null
+        if (p.isInput) { selIn = p.choice; Engine.input = p.choice }
+        else { selOut = p.choice; Engine.output = p.choice }
+        Engine.restartIfRunning(this)
     }
 
     /** Android doesn't let apps connect Bluetooth audio directly, so open the phone's Bluetooth list. */

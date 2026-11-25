@@ -16,7 +16,14 @@ data class Choice(
     val group: String,
     val source: Int = MediaRecorder.AudioSource.MIC,
     val device: AudioDeviceInfo? = null,
-)
+    /** Bluetooth isn't connected: choosing this opens the device list instead. */
+    val pickBt: Boolean = false,
+    /** A connected Bluetooth device: shows a "Switch" button to pick a different one. */
+    val canSwitch: Boolean = false,
+    val enabled: Boolean = true,
+) {
+    val usable get() = enabled && !pickBt
+}
 
 /** Reads every audio port and device Android reports, right now. */
 object Devices {
@@ -58,14 +65,14 @@ object Devices {
             }
         }
 
-        val c = "Connected"
+        val c = "Bluetooth and plugged in"
         for (d in devices) {
             val id = "in${d.id}"
             when (d.type) {
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO ->
-                    out += Choice(id, "Bluetooth mic", label(d, "Headset or earbuds"), Kind.BT, c, MediaRecorder.AudioSource.VOICE_COMMUNICATION, d)
+                    out += Choice(id, "Bluetooth mic", label(d, "Headset or earbuds"), Kind.BT, c, MediaRecorder.AudioSource.VOICE_COMMUNICATION, d, canSwitch = true)
                 TYPE_BLE_HEADSET ->
-                    out += Choice(id, "Bluetooth LE mic", label(d, "Earbuds"), Kind.BT, c, MediaRecorder.AudioSource.VOICE_COMMUNICATION, d)
+                    out += Choice(id, "Bluetooth LE mic", label(d, "Earbuds"), Kind.BT, c, MediaRecorder.AudioSource.VOICE_COMMUNICATION, d, canSwitch = true)
                 AudioDeviceInfo.TYPE_WIRED_HEADSET ->
                     out += Choice(id, "Headset mic", "Headphone jack", Kind.JACK, c, MediaRecorder.AudioSource.MIC, d)
                 AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_ACCESSORY ->
@@ -80,6 +87,9 @@ object Devices {
                     out += Choice(id, "Other mic", label(d, "Input ${d.type}"), Kind.OTHER, c, MediaRecorder.AudioSource.MIC, d)
             }
         }
+        if (out.none { it.kind == Kind.BT }) {
+            out += Choice("btin-pick", "Bluetooth mic", "Not connected · tap to pick a device", Kind.BT, c, pickBt = true)
+        }
         return out.distinctBy { it.id }
     }
 
@@ -91,8 +101,8 @@ object Devices {
         for (d in am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
             val id = "out${d.id}"
             when (d.type) {
-                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> main += Choice(id, "Bluetooth", label(d, "Earbuds or speaker"), Kind.BT, m, device = d)
-                TYPE_BLE_HEADSET, TYPE_BLE_SPEAKER -> main += Choice(id, "Bluetooth LE", label(d, "Earbuds or speaker"), Kind.BT, m, device = d)
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> main += Choice(id, "Bluetooth", label(d, "Earbuds or speaker") + " · connected", Kind.BT, m, device = d, canSwitch = true)
+                TYPE_BLE_HEADSET, TYPE_BLE_SPEAKER -> main += Choice(id, "Bluetooth", label(d, "Earbuds or speaker") + " · connected", Kind.BT, m, device = d, canSwitch = true)
                 AudioDeviceInfo.TYPE_WIRED_HEADPHONES, AudioDeviceInfo.TYPE_WIRED_HEADSET ->
                     main += Choice(id, "Headphone jack", "Wired headphones", Kind.JACK, m, device = d)
                 AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_ACCESSORY ->
@@ -117,13 +127,23 @@ object Devices {
         if (main.none { it.kind == Kind.SPEAKER }) {
             main += Choice("speaker", "Phone speaker", "Loudspeaker", Kind.SPEAKER, m)
         }
+        if (main.none { it.kind == Kind.BT }) {
+            main += Choice("bt-pick", "Bluetooth", "Not connected · tap to pick a device", Kind.BT, m, pickBt = true)
+        }
+        if (main.none { it.kind == Kind.USB }) {
+            main += Choice("usb-none", "USB port", "Nothing plugged in", Kind.USB, m, enabled = false)
+        }
+        // Headphone jack is only listed when the phone reports one; no jack, no row.
+        val order = listOf(Kind.BT, Kind.JACK, Kind.USB, Kind.SPEAKER)
+        main.sortBy { order.indexOf(it.kind).let { i -> if (i < 0) 99 else i } }
         return (main + more).distinctBy { it.id }
     }
 
     /** When nothing is picked yet, or the picked device goes away, use the best one present. */
-    fun best(outputs: List<Choice>): Choice? {
+    fun best(choices: List<Choice>): Choice? {
+        val usable = choices.filter { it.usable }
         val order = listOf(Kind.BT, Kind.USB, Kind.JACK, Kind.HEARING, Kind.CAR, Kind.SPEAKER)
-        for (k in order) outputs.firstOrNull { it.kind == k }?.let { return it }
-        return outputs.firstOrNull()
+        for (k in order) usable.firstOrNull { it.kind == k }?.let { return it }
+        return usable.firstOrNull()
     }
 }

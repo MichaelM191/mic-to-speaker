@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -39,6 +40,9 @@ class MainActivity : ComponentActivity() {
     private var update by mutableStateOf<Updater.Info?>(null)
     private var updateMsg by mutableStateOf<String?>(null)
     private var downloaded: File? = null
+    // Set when the user went to pick a Bluetooth device; the next one that connects gets used.
+    private var wantBtIn = false
+    private var wantBtOut = false
 
     private val deviceWatcher = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) = rescan()
@@ -72,8 +76,16 @@ class MainActivity : ComponentActivity() {
                 update = update,
                 updateMsg = updateMsg,
                 version = BuildConfig.VERSION_NAME,
-                onPickIn = { selIn = it; Engine.input = it; Engine.restartIfRunning(this) },
-                onPickOut = { selOut = it; Engine.output = it; Engine.restartIfRunning(this) },
+                onPickIn = { c ->
+                    if (c.pickBt) { wantBtIn = true; openBluetooth() }
+                    else if (c.usable) { selIn = c; Engine.input = c; Engine.restartIfRunning(this) }
+                },
+                onPickOut = { c ->
+                    if (c.pickBt) { wantBtOut = true; openBluetooth() }
+                    else if (c.usable) { selOut = c; Engine.output = c; Engine.restartIfRunning(this) }
+                },
+                onSwitchBtIn = { wantBtIn = true; openBluetooth() },
+                onSwitchBtOut = { wantBtOut = true; openBluetooth() },
                 onScan = { rescan() },
                 onVolume = { volume = it; Engine.volume = it },
                 onEcho = { echo = !echo; Engine.echo = echo; Engine.restartIfRunning(this) },
@@ -87,6 +99,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        rescan()
         // Coming back from "allow installs" settings: continue the update.
         downloaded?.let { if (packageManager.canRequestPackageInstalls()) Updater.install(this, it) }
     }
@@ -101,8 +114,12 @@ class MainActivity : ComponentActivity() {
         val (i, o) = Devices.scan(am)
         inputs = i
         outputs = o
-        val newIn = i.firstOrNull { it.id == selIn?.id } ?: i.first()
-        val newOut = o.firstOrNull { it.id == selOut?.id } ?: Devices.best(o)
+        val btIn = i.firstOrNull { it.kind == Kind.BT && it.usable && it.id != selIn?.id }
+        val btOut = o.firstOrNull { it.kind == Kind.BT && it.usable && it.group == "Main" && it.id != selOut?.id }
+        val newIn = (if (wantBtIn && btIn != null) btIn.also { wantBtIn = false } else null)
+            ?: i.firstOrNull { it.id == selIn?.id && it.usable } ?: i.first { it.usable }
+        val newOut = (if (wantBtOut && btOut != null) btOut.also { wantBtOut = false } else null)
+            ?: o.firstOrNull { it.id == selOut?.id && it.usable } ?: Devices.best(o)
         val changed = newIn.id != Engine.input?.id || newOut?.id != Engine.output?.id
         selIn = newIn
         selOut = newOut
@@ -110,6 +127,15 @@ class MainActivity : ComponentActivity() {
         Engine.output = newOut
         if (changed) Engine.restartIfRunning(this)
         lifecycleScope.launch { delay(700); scanning = false }
+    }
+
+    /** Android doesn't let apps connect Bluetooth audio directly, so open the phone's Bluetooth list. */
+    private fun openBluetooth() {
+        try {
+            startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+        } catch (e: Exception) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
     }
 
     private fun hasMic() =

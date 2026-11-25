@@ -114,7 +114,8 @@ fun MicScreen(
     inputs: List<Choice>, outputs: List<Choice>, selIn: Choice?, selOut: Choice?,
     scanning: Boolean, volume: Float, echo: Boolean, noise: Boolean, boost: Boolean,
     update: Updater.Info?, updateMsg: String?, version: String,
-    onPickIn: (Choice) -> Unit, onPickOut: (Choice) -> Unit, onScan: () -> Unit,
+    onPickIn: (Choice) -> Unit, onPickOut: (Choice) -> Unit,
+    onSwitchBtIn: () -> Unit, onSwitchBtOut: () -> Unit, onScan: () -> Unit,
     onVolume: (Float) -> Unit, onEcho: () -> Unit, onNoise: () -> Unit, onBoost: () -> Unit,
     onStartStop: () -> Unit, onUpdate: () -> Unit,
 ) {
@@ -126,66 +127,60 @@ fun MicScreen(
         Column(
             Modifier.fillMaxSize().background(Bg).systemBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            // ---- Top: things you only look at ----
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // ---- Top: things you only look at. Fixed page, no scrolling; the route card takes the leftover space. ----
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Mic to Speaker", color = Fg, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Version $version", color = Muted, fontSize = 11.sp)
+                }
+                StatusPill(running)
+            }
+            if (update != null) {
+                Spacer(Modifier.height(10.dp))
+                UpdateBanner(update, updateMsg, onUpdate)
+            }
+            Spacer(Modifier.height(12.dp))
+            Column(
+                Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Surface).padding(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceEvenly
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RouteNode("From", selIn, Modifier.weight(1f))
+                    Text("→", color = if (running) Live else Muted, fontSize = 24.sp)
+                    RouteNode("To", selOut, Modifier.weight(1f))
+                }
+                Meter(running, level)
+                // One-line port scan summary.
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Mic to Speaker", color = Fg, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    StatusPill(running)
-                }
-
-                if (update != null) UpdateBanner(update, updateMsg, onUpdate)
-
-                Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Surface).padding(18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        RouteNode("From", selIn, Modifier.weight(1f))
-                        Text("→", color = if (running) Live else Muted, fontSize = 24.sp)
-                        RouteNode("To", selOut, Modifier.weight(1f))
-                    }
-                    Meter(running, level)
-                }
-
-                // Port scan
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Found on this phone", color = Fg, fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                        Text(
-                            if (scanning) "Scanning…" else "Scan again",
-                            color = Accent, fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                            modifier = Modifier.clip(CircleShape).border(1.5.dp, Line, CircleShape)
-                                .clickable(enabled = !scanning) { onScan() }.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val mics = inputs.size
-                        PortChip("$mics mic options", true)
-                        PortChip("Speaker", true)
-                        PortChip("Bluetooth", outputs.any { it.kind == Kind.BT })
-                        PortChip("USB-C", outputs.any { it.kind == Kind.USB } || inputs.any { it.kind == Kind.USB })
-                        // Only show the jack when the phone reports one in use.
-                        if (outputs.any { it.kind == Kind.JACK }) PortChip("Headphone jack", true)
+                    val bits = buildList {
+                        add("${inputs.count { it.usable }} mics")
+                        if (outputs.any { it.kind == Kind.BT && it.usable }) add("Bluetooth")
+                        if (outputs.any { it.kind == Kind.JACK }) add("Jack")
+                        if (outputs.any { it.kind == Kind.USB && it.usable }) add("USB")
+                        add("Speaker")
                         val extra = outputs.count { it.group == "Also found" }
-                        if (extra > 0) PortChip("$extra more outputs", true)
+                        if (extra > 0) add("+$extra")
                     }
+                    Text("Found: " + bits.joinToString(" · "), color = Muted, fontSize = 12.5.sp, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     Text(
-                        "${inputs.size} inputs and ${outputs.size} outputs. New devices show up on their own.",
-                        color = Muted, fontSize = 12.5.sp
+                        if (scanning) "Scanning…" else "Scan",
+                        color = Accent, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                        modifier = Modifier.clip(CircleShape).border(1.5.dp, Line, CircleShape)
+                            .clickable(enabled = !scanning) { onScan() }.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
-                Text("Version $version", color = Muted, fontSize = 11.sp)
             }
 
             // ---- Bottom: everything you touch, in thumb reach ----
-            Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 val feedbackRisk = Devices.isBuiltInMic(selIn) && selOut?.kind == Kind.SPEAKER && !echo
                 if (error != null) Notice(error!!)
                 else if (feedbackRisk) Notice("Phone mic into phone speaker can squeal. Turn on Echo guard or use headphones.")
 
-                Picker("Listen from", selIn, inputs, onPickIn)
-                Picker("Play to", selOut, outputs, onPickOut)
+                Picker("Input", selIn, inputs, onPickIn, onSwitchBtIn)
+                Picker("Output", selOut, outputs, onPickOut, onSwitchBtOut)
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     @Suppress("DEPRECATION")
@@ -281,14 +276,14 @@ private fun Notice(text: String) {
 }
 
 @Composable
-private fun Picker(label: String, current: Choice?, options: List<Choice>, onPick: (Choice) -> Unit) {
+private fun Picker(label: String, current: Choice?, options: List<Choice>, onPick: (Choice) -> Unit, onSwitchBt: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Column {
         Text(label.uppercase(), color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
-            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
+            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
         Box {
             Row(
-                Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(18.dp)).background(Surface)
+                Modifier.fillMaxWidth().heightIn(min = 60.dp).clip(RoundedCornerShape(18.dp)).background(Surface)
                     .border(2.dp, if (open) Accent else Line, RoundedCornerShape(18.dp))
                     .clickable { open = true }.padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -314,14 +309,28 @@ private fun Picker(label: String, current: Choice?, options: List<Choice>, onPic
                     }
                     val picked = o.id == current?.id
                     DropdownMenuItem(
+                        enabled = o.enabled,
                         text = {
                             Column {
-                                Text(o.name, color = Fg, fontWeight = FontWeight.Bold)
-                                Text(o.sub, color = Muted, fontSize = 12.sp)
+                                Text(o.name, color = if (o.enabled) Fg else Muted, fontWeight = FontWeight.Bold)
+                                Text(o.sub, color = if (o.pickBt) Accent else Muted, fontSize = 12.sp)
                             }
                         },
                         leadingIcon = { Icon(iconFor(o.kind), null, tint = if (picked) Accent else Muted) },
-                        trailingIcon = { if (picked) Icon(Icons.Filled.Check, null, tint = Accent) },
+                        trailingIcon = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (o.canSwitch) {
+                                    Text(
+                                        "Switch", color = Accent, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                                        modifier = Modifier.clip(CircleShape).border(1.5.dp, Line, CircleShape)
+                                            .clickable { open = false; onSwitchBt() }
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                if (picked) Icon(Icons.Filled.Check, null, tint = Accent)
+                            }
+                        },
                         onClick = { open = false; onPick(o) },
                         modifier = Modifier.heightIn(min = 56.dp).background(if (picked) AccentSoft else Color.Transparent)
                     )

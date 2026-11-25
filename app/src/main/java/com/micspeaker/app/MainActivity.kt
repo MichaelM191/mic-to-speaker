@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
                 onVolume = { volume = it; Engine.volume = it },
                 micGain = micGain,
                 onMicGain = { micGain = it; Engine.micGain = it },
-                onEcho = { echo = !echo; Engine.echo = echo; Engine.restartIfRunning(this) },
+                onEcho = { echo = !echo; Engine.antiSqueal = echo },
                 onNoise = { noise = !noise; Engine.noise = noise; Engine.restartIfRunning(this) },
                 onBoost = { boost = !boost; Engine.boost = boost },
                 onStartStop = { if (Engine.running.value) stopLoop() else tryStart() },
@@ -196,7 +196,7 @@ class MainActivity : ComponentActivity() {
     private fun startLoop() {
         Engine.input = selIn
         Engine.output = selOut
-        Engine.echo = echo
+        Engine.antiSqueal = echo
         Engine.noise = noise
         Engine.boost = boost
         Engine.volume = volume

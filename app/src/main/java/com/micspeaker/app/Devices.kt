@@ -49,7 +49,7 @@ object Devices {
         val out = mutableListOf<Choice>()
         val g = "Built in"
         out += Choice("main", "Phone mic", "Main mic, normal sound", Kind.MIC, g, MediaRecorder.AudioSource.MIC)
-        out += Choice("voice", "Clear voice", "Call-style echo and noise cleanup", Kind.VOICE, g, MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+        out += Choice("voice", "Call mic", "Phone-call processing, best with headphones", Kind.VOICE, g, MediaRecorder.AudioSource.VOICE_COMMUNICATION)
         out += Choice("camera", "Camera mic", "Tuned for video, often the back mic", Kind.BACK, g, MediaRecorder.AudioSource.CAMCORDER)
         out += Choice("speech", "Voice pickup", "Tuned for speech", Kind.VOICE, g, MediaRecorder.AudioSource.VOICE_RECOGNITION)
         if (am.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true") {

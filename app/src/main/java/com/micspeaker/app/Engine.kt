@@ -24,6 +24,8 @@ object Engine {
     val error = MutableStateFlow<String?>(null)
 
     @Volatile var volume = 0.8f
+    /** Mic sensitivity: how strongly the input is picked up, before the output volume. */
+    @Volatile var micGain = 1f
     @Volatile var boost = false
     var echo = true
     var noise = false
@@ -121,16 +123,18 @@ object Engine {
             while (go) {
                 val n = rec.read(buf, 0, chunk)
                 if (n <= 0) continue
-                val gain = volume * (if (boost) 2f else 1f)
-                var peak = 0
+                val inGain = micGain
+                val outGain = volume * (if (boost) 2f else 1f)
+                var peak = 0f
                 for (i in 0 until n) {
-                    val v = (buf[i] * gain).toInt().coerceIn(-32768, 32767)
-                    buf[i] = v.toShort()
-                    val a = abs(v)
+                    val s = buf[i] * inGain
+                    val a = abs(s)
                     if (a > peak) peak = a
+                    buf[i] = (s * outGain).toInt().coerceIn(-32768, 32767).toShort()
                 }
                 track.write(buf, 0, n)
-                shown = maxOf(peak / 32768f, shown * 0.85f)
+                // The meter shows the mic after sensitivity, so you can see what the slider does.
+                shown = maxOf((peak / 32768f).coerceAtMost(1f), shown * 0.85f)
                 level.value = shown
             }
         } catch (e: Exception) {

@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     private var selOut by mutableStateOf<Choice?>(null)
     private var scanning by mutableStateOf(false)
     private var volume by mutableFloatStateOf(0.8f)
+    private var micGain by mutableFloatStateOf(1f)
     private var echo by mutableStateOf(true)
     private var noise by mutableStateOf(false)
     private var boost by mutableStateOf(false)
@@ -87,6 +88,8 @@ class MainActivity : ComponentActivity() {
                 onSwitchBtOut = { wantBtOut = true; openBluetooth() },
                 onScan = { rescan() },
                 onVolume = { volume = it; Engine.volume = it },
+                micGain = micGain,
+                onMicGain = { micGain = it; Engine.micGain = it },
                 onEcho = { echo = !echo; Engine.echo = echo; Engine.restartIfRunning(this) },
                 onNoise = { noise = !noise; Engine.noise = noise; Engine.restartIfRunning(this) },
                 onBoost = { boost = !boost; Engine.boost = boost },
@@ -158,6 +161,7 @@ class MainActivity : ComponentActivity() {
         Engine.noise = noise
         Engine.boost = boost
         Engine.volume = volume
+        Engine.micGain = micGain
         ContextCompat.startForegroundService(this, Intent(this, LoopService::class.java))
     }
 

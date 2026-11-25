@@ -116,7 +116,7 @@ fun MicScreen(
     update: Updater.Info?, updateMsg: String?, version: String,
     onPickIn: (Choice) -> Unit, onPickOut: (Choice) -> Unit,
     onSwitchBtIn: () -> Unit, onSwitchBtOut: () -> Unit, onScan: () -> Unit,
-    onVolume: (Float) -> Unit, onEcho: () -> Unit, onNoise: () -> Unit, onBoost: () -> Unit,
+    onVolume: (Float) -> Unit, micGain: Float, onMicGain: (Float) -> Unit, onEcho: () -> Unit, onNoise: () -> Unit, onBoost: () -> Unit,
     onStartStop: () -> Unit, onUpdate: () -> Unit,
 ) {
     val running by Engine.running.collectAsState()
@@ -167,16 +167,10 @@ fun MicScreen(
                 Picker("Input", selIn, inputs, onPickIn, onSwitchBtIn)
                 Picker("Output", selOut, outputs, onPickOut, onSwitchBtOut)
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    @Suppress("DEPRECATION")
-                    Icon(Icons.Filled.VolumeUp, null, tint = Muted, modifier = Modifier.size(22.dp))
-                    Slider(
-                        value = volume, onValueChange = onVolume, valueRange = 0f..1.5f,
-                        modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-                        colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent, inactiveTrackColor = Line)
-                    )
-                    Text("${(volume * 100).toInt()}%", color = Fg, fontWeight = FontWeight.Bold, modifier = Modifier.width(48.dp))
-                }
+                @Suppress("DEPRECATION")
+                LevelSlider("Mic sensitivity", Icons.Filled.Mic, micGain, 0.1f..3f, onMicGain)
+                @Suppress("DEPRECATION")
+                LevelSlider("Volume", Icons.Filled.VolumeUp, volume, 0f..1.5f, onVolume)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Toggle("Echo guard", echo, Modifier.weight(1f), onEcho)
                     Toggle("Noise cleanup", noise, Modifier.weight(1f), onNoise)
@@ -185,6 +179,22 @@ fun MicScreen(
                 BigButton(running, onStartStop)
             }
         }
+    }
+}
+
+@Composable
+private fun LevelSlider(label: String, icon: ImageVector, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, label, tint = Muted, modifier = Modifier.size(22.dp))
+        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+            Text(label, color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Slider(
+                value = value, onValueChange = onChange, valueRange = range,
+                modifier = Modifier.height(32.dp),
+                colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent, inactiveTrackColor = Line)
+            )
+        }
+        Text("${(value * 100).toInt()}%", color = Fg, fontWeight = FontWeight.Bold, modifier = Modifier.width(52.dp))
     }
 }
 

@@ -8,6 +8,7 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
+import android.media.MediaRecorder
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
@@ -21,6 +22,8 @@ object Engine {
     val running = MutableStateFlow(false)
     val level = MutableStateFlow(0f)
     val error = MutableStateFlow<String?>(null)
+    /** Measured delay from mic, through the speaker, back to the mic (ms). Null when no echo is heard. */
+    val delayMs = MutableStateFlow<Int?>(null)
 
     @Volatile var volume = 0.8f
     /** Mic sensitivity: how strongly the input is picked up, before the output volume. */
@@ -36,6 +39,7 @@ object Engine {
     var onEnded: (() -> Unit)? = null
 
     @Volatile private var go = false
+    private var canceller: FeedbackCanceller? = null
     private var thread: Thread? = null
     private val main = Handler(Looper.getMainLooper())
 
@@ -86,7 +90,13 @@ object Engine {
             val minIn = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             if (minIn <= 0) throw IllegalStateException("This phone can't record at $rate Hz.")
 
-            rec = AudioRecord(inp.source, rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minIn * 2)
+            // For the normal phone mic, ask for the live-performance mode (Android 10+): lowest delay, no processing.
+            if (inp.source == MediaRecorder.AudioSource.MIC && Build.VERSION.SDK_INT >= 29) {
+                rec = runCatching {
+                    AudioRecord(MediaRecorder.AudioSource.VOICE_PERFORMANCE, rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minIn * 2)
+                }.getOrNull()?.takeIf { it.state == AudioRecord.STATE_INITIALIZED || run { it.release(); false } }
+            }
+            if (rec == null) rec = AudioRecord(inp.source, rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minIn * 2)
             if (rec.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("That mic can't be opened right now. Try another one.")
             inp.device?.let { rec.setPreferredDevice(it) }
 
@@ -129,6 +139,8 @@ object Engine {
             val guard = HowlGuard(rate)
             val gate = EchoGate(rate)
             val eqf = Equalizer(rate)
+            val fc = FeedbackCanceller(rate).also { canceller = it }
+            val shift = FreqShift(rate)
             val chunk = burst.coerceAtMost(minIn / 2)
             val buf = ShortArray(chunk)
             var shown = 0f
@@ -144,10 +156,13 @@ object Engine {
                     val s = buf[i] * inGain
                     val a = abs(s)
                     if (a > peak) peak = a
-                    var y = if (guardOn) guard.process(gate.process(s)) else s
+                    var y = if (guardOn) guard.process(gate.process(fc.cancel(s))) else s
                     y = eqf.process(y) * outGain
+                    if (guardOn) y = shift.process(y)
                     y = softLimit(y)
-                    buf[i] = y.toInt().coerceIn(-32768, 32767).toShort()
+                    val q = y.toInt().coerceIn(-32768, 32767)
+                    buf[i] = q.toShort()
+                    fc.push(q.toFloat())
                 }
                 track.write(buf, 0, n)
                 val u = track.underrunCount
@@ -158,6 +173,7 @@ object Engine {
                     }
                 }
                 // The meter shows the mic after sensitivity, so you can see what the slider does.
+                delayMs.value = if (guardOn) fc.delayMs else null
                 shown = maxOf((peak / 32768f).coerceAtMost(1f), shown * 0.85f)
                 level.value = shown
             }
@@ -177,8 +193,10 @@ object Engine {
                 }
                 am.mode = AudioManager.MODE_NORMAL
             }
+            canceller?.close(); canceller = null
             running.value = false
             level.value = 0f
+            delayMs.value = null
             // Ended by an error (not by stop()): tell the service so it can close.
             if (go) {
                 go = false

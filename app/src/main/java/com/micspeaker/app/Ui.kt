@@ -132,6 +132,7 @@ fun MicScreen(
     val running by Engine.running.collectAsState()
     val level by Engine.level.collectAsState()
     val error by Engine.error.collectAsState()
+    val delay by Engine.delayMs.collectAsState()
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Accent, background = Bg, surface = Surface2, onSurface = Fg)) {
       Box(Modifier.fillMaxSize()) {
@@ -166,6 +167,10 @@ fun MicScreen(
                         RouteNode("To", selOut, Modifier.weight(1f))
                     }
                     Meter(running, level)
+                    if (running) Text(
+                        delay?.let { "Echo canceller locked · speaker delay $it ms" } ?: if (echo) "Listening for echo…" else "Echo cut is off",
+                        color = Muted, fontSize = 11.sp
+                    )
                 }
             }
 

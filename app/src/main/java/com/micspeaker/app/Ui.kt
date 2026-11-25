@@ -126,7 +126,9 @@ fun MicScreen(
     onVolume: (Float) -> Unit, micGain: Float, onMicGain: (Float) -> Unit, onEcho: () -> Unit, onNoise: () -> Unit, onBoost: () -> Unit,
     onStartStop: () -> Unit, onUpdate: () -> Unit,
     prompt: SwitchPrompt?, onAcceptPrompt: () -> Unit, onDismissPrompt: () -> Unit,
+    eq: List<Float>, onEq: (List<Float>) -> Unit,
 ) {
+    var eqOpen by remember { mutableStateOf(false) }
     val running by Engine.running.collectAsState()
     val level by Engine.level.collectAsState()
     val error by Engine.error.collectAsState()
@@ -181,13 +183,15 @@ fun MicScreen(
                 @Suppress("DEPRECATION")
                 LevelSlider("Volume", Icons.Filled.VolumeUp, volume, 0f..1.5f, onVolume)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Toggle("Echo cut", echo, Modifier.weight(1f), onEcho)
-                    Toggle("Noise cleanup", noise, Modifier.weight(1f), onNoise)
-                    Toggle("Voice boost", boost, Modifier.weight(1f), onBoost)
+                    Toggle("Echo cut", echo, Modifier.weight(1.2f), onEcho)
+                    Toggle("Noise", noise, Modifier.weight(1f), onNoise)
+                    Toggle("Boost", boost, Modifier.weight(1f), onBoost)
+                    Toggle("EQ", eq.any { abs(it) > 0.05f }, Modifier.weight(0.8f)) { eqOpen = true }
                 }
                 BigButton(running, onStartStop)
             }
         }
+        EqPopup(eqOpen, eq, onEq) { eqOpen = false }
         SwitchPopup(prompt, onAcceptPrompt, onDismissPrompt)
       }
     }
@@ -260,6 +264,62 @@ private fun SwitchPopup(prompt: SwitchPrompt?, onAccept: () -> Unit, onDismiss: 
                 Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp).padding(bottom = 10.dp)) {
                     Box(Modifier.fillMaxWidth(left.value).height(2.dp).clip(CircleShape).background(Color.White))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EqPopup(open: Boolean, eq: List<Float>, onEq: (List<Float>) -> Unit, onClose: () -> Unit) {
+    AnimatedVisibility(visible = open, enter = fadeIn(tween(200)), exit = fadeOut(tween(150))) {
+        Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onClose() }
+        )
+    }
+    AnimatedVisibility(
+        visible = open,
+        enter = fadeIn(tween(200)) + slideInVertically(tween(250)) { it / 3 },
+        exit = fadeOut(tween(150)),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Box(Modifier.fillMaxSize().systemBarsPadding().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Surface2)
+                    .border(1.dp, Line, RoundedCornerShape(24.dp))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text("Equaliser", color = Fg, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 6.dp)) {
+                    for ((name, gains) in Equalizer.PRESETS) {
+                        val on = gains.zip(eq).all { (a, b) -> abs(a - b) < 0.05f }
+                        Toggle(name, on, Modifier.weight(1f)) { onEq(gains) }
+                    }
+                }
+                Equalizer.BANDS.forEachIndexed { i, (name, hz) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.width(76.dp)) {
+                            Text(name, color = Fg, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(if (hz >= 1000) "${(hz / 1000).toInt()} kHz" else "${hz.toInt()} Hz", color = Muted, fontSize = 11.sp)
+                        }
+                        Slider(
+                            value = eq[i], valueRange = -12f..12f,
+                            onValueChange = { v -> onEq(eq.toMutableList().also { it[i] = if (abs(v) < 0.6f) 0f else v }) },
+                            modifier = Modifier.weight(1f).height(36.dp),
+                            colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent, inactiveTrackColor = Line)
+                        )
+                        val db = eq[i].toInt()
+                        Text(if (db > 0) "+$db dB" else "$db dB", color = Fg, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                            modifier = Modifier.width(56.dp).padding(start = 8.dp))
+                    }
+                }
+                Box(
+                    Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 52.dp).clip(RoundedCornerShape(16.dp)).background(Accent)
+                        .clickable { onClose() },
+                    contentAlignment = Alignment.Center
+                ) { Text("Done", color = AccentFg, fontWeight = FontWeight.Bold) }
             }
         }
     }

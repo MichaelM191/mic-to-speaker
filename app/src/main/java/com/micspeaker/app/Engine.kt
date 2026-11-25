@@ -28,6 +28,8 @@ object Engine {
     @Volatile var boost = false
     /** Anti-squeal: finds feedback howls and cuts out just that pitch. Your voice passes through. */
     @Volatile var antiSqueal = true
+    /** Equaliser gains in dB for Bass, Low, Mid, Presence, Treble. Replace the whole array to change it. */
+    @Volatile var eq = FloatArray(5)
     var noise = false
     var input: Choice? = null
     var output: Choice? = null
@@ -107,16 +109,18 @@ object Engine {
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build()
                 )
-                .setBufferSizeInBytes(minOut)
+                .setBufferSizeInBytes(maxOf(minOut, rate / 5 * 2)) // room to grow up to ~200 ms if needed
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .build()
             out?.device?.let { track.setPreferredDevice(it) }
 
-            // Keep the delay between your voice and the speaker as small as the phone allows.
+            // Start with a small delay; if the phone can't keep up (a gap in the sound),
+            // grow the buffer a step so the sound stays smooth.
             val burst = am.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)?.toIntOrNull()?.coerceIn(64, 1024) ?: 256
-            runCatching { track.setBufferSizeInFrames(burst * 4) }
-            val maxQueued = burst * 6L
+            var bufFrames = maxOf(burst * 4, minOut / 2)
+            runCatching { bufFrames = track.setBufferSizeInFrames(bufFrames) }
+            var underruns = track.underrunCount
 
             rec.startRecording()
             track.play()
@@ -124,9 +128,9 @@ object Engine {
 
             val guard = HowlGuard(rate)
             val gate = EchoGate(rate)
+            val eqf = Equalizer(rate)
             val chunk = burst.coerceAtMost(minIn / 2)
             val buf = ShortArray(chunk)
-            var written = 0L
             var shown = 0f
             while (go) {
                 val n = rec.read(buf, 0, chunk)
@@ -134,22 +138,24 @@ object Engine {
                 val inGain = micGain
                 val outGain = volume * (if (boost) 2f else 1f)
                 val guardOn = antiSqueal
+                eqf.set(eq)
                 var peak = 0f
                 for (i in 0 until n) {
                     val s = buf[i] * inGain
                     val a = abs(s)
                     if (a > peak) peak = a
                     var y = if (guardOn) guard.process(gate.process(s)) else s
-                    y *= outGain
-                    if (guardOn) y = softLimit(y)
+                    y = eqf.process(y) * outGain
+                    y = softLimit(y)
                     buf[i] = y.toInt().coerceIn(-32768, 32767).toShort()
                 }
-                // If audio has piled up waiting to play, skip this bit so the delay can't grow.
-                val played = track.playbackHeadPosition.toLong() and 0xFFFFFFFFL
-                val queued = written - played
-                if (queued <= maxQueued) {
-                    val w = track.write(buf, 0, n)
-                    if (w > 0) written += w
+                track.write(buf, 0, n)
+                val u = track.underrunCount
+                if (u > underruns) {
+                    underruns = u
+                    if (bufFrames < track.bufferCapacityInFrames) {
+                        runCatching { bufFrames = track.setBufferSizeInFrames(bufFrames + burst) }
+                    }
                 }
                 // The meter shows the mic after sensitivity, so you can see what the slider does.
                 shown = maxOf((peak / 32768f).coerceAtMost(1f), shown * 0.85f)

@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
     private var echo by mutableStateOf(true)
     private var noise by mutableStateOf(false)
     private var boost by mutableStateOf(false)
+    private var eq by mutableStateOf(List(5) { 0f })
     private var update by mutableStateOf<Updater.Info?>(null)
     private var updateMsg by mutableStateOf<String?>(null)
     private var downloaded: File? = null
@@ -47,6 +48,17 @@ class MainActivity : ComponentActivity() {
     // Devices seen on the last scan, so a newly connected one can be offered in a popup.
     private var known: Set<String>? = null
     private var prompt by mutableStateOf<SwitchPrompt?>(null)
+
+    private fun saveEq() {
+        getSharedPreferences("settings", MODE_PRIVATE).edit().putString("eq", eq.joinToString(",")).apply()
+    }
+
+    private fun loadEq() {
+        val saved = getSharedPreferences("settings", MODE_PRIVATE).getString("eq", null)
+        val g = saved?.split(",")?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 5 } ?: return
+        eq = g
+        Engine.eq = g.toFloatArray()
+    }
 
     private val deviceWatcher = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) = rescan()
@@ -63,6 +75,7 @@ class MainActivity : ComponentActivity() {
         am = getSystemService(AudioManager::class.java)
         am.registerAudioDeviceCallback(deviceWatcher, Handler(Looper.getMainLooper()))
         Engine.volume = volume
+        loadEq()
         lifecycleScope.launch { update = Updater.check() }
 
         setContent {
@@ -101,6 +114,8 @@ class MainActivity : ComponentActivity() {
                 prompt = prompt,
                 onAcceptPrompt = { acceptPrompt() },
                 onDismissPrompt = { prompt = null },
+                eq = eq,
+                onEq = { g -> eq = g; Engine.eq = g.toFloatArray(); saveEq() },
             )
         }
     }

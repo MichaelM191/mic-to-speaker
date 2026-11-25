@@ -140,17 +140,22 @@ fun MicScreen(
                 UpdateBanner(update, updateMsg, onUpdate)
             }
             Spacer(Modifier.height(12.dp))
-            Column(
-                Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(24.dp)).background(Surface).padding(14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RouteNode("From", selIn, Modifier.weight(1f))
-                    Text("→", color = if (running) Live else Muted, fontSize = 24.sp)
-                    RouteNode("To", selOut, Modifier.weight(1f))
+            // The card sits at the top of the free space and stops at 220dp; any extra room stays empty
+            // so the controls keep their place at the bottom.
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopCenter) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 220.dp).fillMaxHeight()
+                        .clip(RoundedCornerShape(24.dp)).background(Surface).padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RouteNode("From", selIn, Modifier.weight(1f))
+                        Text("→", color = if (running) Live else Muted, fontSize = 24.sp)
+                        RouteNode("To", selOut, Modifier.weight(1f))
+                    }
+                    Meter(running, level)
                 }
-                Meter(running, level)
             }
 
             // ---- Bottom: everything you touch, in thumb reach ----
